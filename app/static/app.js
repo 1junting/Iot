@@ -218,11 +218,14 @@ function renderCounters() {
   $('#navPacketCount').textContent = sim.packets.length;
 }
 
+// 狀態每秒輪詢，但卡片內容沒變時保留 DOM，避免閃動及關閉已展開的選單。
+let renderedDevicesMarkup = null;
+
 // 依搜尋字串畫出虛擬裝置；卡片按鈕再經事件處理器呼叫 API。
 function renderDevices() {
   const query = ($('#deviceSearch')?.value || '').trim().toLowerCase();
   const devices = state.devices.filter(device => `${device.name} ${device.protocol}`.toLowerCase().includes(query));
-  $('#deviceGrid').innerHTML = devices.length ? devices.map(device => {
+  const markup = devices.length ? devices.map(device => {
     const protocol = PROTOCOLS[device.protocol];
     const running = deviceIsRunning(device);
     return `<article class="device-card" style="--protocol-color:${protocol.color}">
@@ -232,6 +235,10 @@ function renderDevices() {
       <div class="device-actions">${running ? `<button class="button button-secondary" data-stop-device="${device.id}">■ 停止全部</button>` : `<button class="button button-primary" data-start-device="${device.id}">▶ 啟動</button>`}<button class="button button-secondary" data-send-device="${device.id}">發送一次</button><span class="device-state ${running ? 'running' : ''}">${running ? 'RUNNING' : 'READY'}</span></div>
     </article>`;
   }).join('') : emptyState('找不到裝置', query ? '請調整搜尋關鍵字。' : '建立一台裝置開始模擬。');
+  if (markup !== renderedDevicesMarkup) {
+    $('#deviceGrid').innerHTML = markup;
+    renderedDevicesMarkup = markup;
+  }
   renderCounters();
 }
 
