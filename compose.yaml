@@ -1,0 +1,96 @@
+# 本機實驗組合：Sender 發送訊息，Broker 與 Receiver 提供可觀察的測試目標。
+services:
+  sender:
+    # 與 lab-receiver 共用同一個 Python 映像，但啟動 app.main:app（Port 8080）。
+    build: .
+    container_name: iot-all-in-one-sender
+    ports:
+      - "8080:8080"
+    cap_add:
+      # Scapy 監看容器 eth0 需要建立原始封包 socket。
+      - NET_RAW
+    depends_on:
+      # 等實驗用目標就緒後再啟動前端，避免首次發送時目標尚未開機。
+      lab-mosquitto:
+        condition: service_healthy
+      lab-rabbitmq:
+        condition: service_healthy
+      lab-receiver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - iot-lab
+
+  lab-mosquitto:
+    # MQTT Broker 在容器網路內使用 broker:1883；Mac 只能從 127.0.0.1:1884 連入。
+    build: ./lab/mosquitto
+    ports:
+      - "127.0.0.1:1884:1883"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/version' -C 1 -W 3 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+    networks:
+      iot-lab:
+        aliases:
+          - broker
+
+  lab-rabbitmq:
+    # AMQP Broker 供 Sender 的 AMQP Adapter 使用；帳密僅供本機實驗。
+    image: rabbitmq:3.13-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: lab
+      RABBITMQ_DEFAULT_PASS: lab-pass
+    ports:
+      - "127.0.0.1:5673:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      iot-lab:
+        aliases:
+          - rabbitmq
+
+  lab-receiver:
+    # 實驗接收端與 Sender 用同一份程式映像，但改執行 app.receiver:app。
+    build: .
+    command: ["uvicorn", "app.receiver:app", "--host", "0.0.0.0", "--port", "8091"]
+    environment:
+      MQTT_HOST: broker
+      AMQP_URL: amqp://lab:lab-pass@rabbitmq:5672/
+    ports:
+      # 8091 HTTP、8765 WebSocket、5020 Modbus TCP、5683/UDP CoAP。
+      - "127.0.0.1:8091:8091"
+      - "127.0.0.1:8765:8765"
+      - "127.0.0.1:5020:5020"
+      - "127.0.0.1:5683:5683/udp"
+    depends_on:
+      lab-mosquitto:
+        condition: service_healthy
+      lab-rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      iot-lab:
+        aliases:
+          - receiver
+
+networks:
+  iot-lab:
+    # 同一網路內的服務可用 broker、rabbitmq、receiver 等別名互相連線。
+    name: iot-lab

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071421">
+  <title>NEXUS IoT Device Simulator</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20261001-old-ui-1">
+</head>
+<body>
+  <!-- 單頁式介面：側欄連結改變 URL hash，app.js 控制哪個 section 顯示。 -->
+  <div class="app-shell">
+    <!-- 側欄只顯示導覽與 API 狀態；裝置、Run、封包數由 JavaScript 更新。 -->
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#dashboard" aria-label="NEXUS 首頁">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong>NEXUS</strong><small>IoT SIMULATOR</small></span>
+      </a>
+      <nav class="nav" aria-label="主要導覽">
+        <p>WORKSPACE</p>
+        <a href="#dashboard" data-view="dashboard"><span class="nav-icon">⌂</span>總覽</a>
+        <a href="#devices" data-view="devices"><span class="nav-icon">◇</span>裝置管理 <b id="navDeviceCount">0</b></a>
+        <a href="#simulator" data-view="simulator"><span class="nav-icon">＋</span>資料模擬器</a>
+        <a href="#runs" data-view="runs"><span class="nav-icon">▶</span>模擬執行 <b id="navRunCount">0</b></a>
+        <a href="#traffic" data-view="traffic"><span class="nav-icon">≋</span>即時流量</a>
+        <a href="#packets" data-view="packets"><span class="nav-icon">▤</span>封包檢視器 <b id="navPacketCount">0</b></a>
+        <p>CONFIGURATION</p>
+        <a href="#protocols" data-view="protocols"><span class="nav-icon">⌁</span>協議設定</a>
+        <a href="#payloads" data-view="payloads"><span class="nav-icon">{ }</span>Payload 範本</a>
+        <a href="#settings" data-view="settings"><span class="nav-icon">⚙</span>系統設定</a>
+      </nav>
+      <div class="sidebar-status">
+        <span class="status-dot" id="backendDot"></span>
+        <div><strong id="backendStatus">正在連線</strong><small>Simulator API</small></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- 頁面標題隨目前 hash 路由改變；頂部操作由 data-action 事件委派處理。 -->
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuButton" aria-label="開啟選單">☰</button>
+        <div class="page-heading"><p id="pageEyebrow">CONTROL CENTER</p><h1 id="pageTitle">系統總覽</h1></div>
+        <div class="top-actions">
+          <span class="live-badge"><i></i> LIVE</span>
+          <button class="button button-secondary" data-action="send-demo">發送測試</button>
+          <button class="button button-primary" data-action="add-device"><span>＋</span> 新增裝置</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- 總覽數字與最近傳輸事件皆來自 /api/status，初始 0 僅是載入前佔位。 -->
+        <section class="view" data-page="dashboard">
+          <div class="hero-panel">
+            <div>
+              <span class="eyebrow">MULTI-PROTOCOL LAB</span>
+              <h2>多協定 IoT 模擬，<br><em>即時封包監控。</em></h2>
+              <p>建立虛擬裝置、切換七種協議，並即時觀察每一次傳輸。</p>
+              <div class="hero-actions"><button class="button button-light" data-action="add-device">建立第一台裝置</button><button class="text-button" data-go="protocols">查看支援協議 →</button></div>
+            </div>
+            <div class="hero-visual" aria-hidden="true">
+              <div class="orbit orbit-one"><i></i><i></i><i></i></div>
+              <div class="orbit orbit-two"><i></i><i></i></div>
+              <div class="core"><span>7</span><small>PROTOCOLS</small></div>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card"><span class="stat-icon cyan">↗</span><div><small>已成功發送</small><strong id="statSent">0</strong><p>累計訊息</p></div></article>
+            <article class="stat-card"><span class="stat-icon violet">◉</span><div><small>執行中的 Run</small><strong id="statActive">0</strong><p>即時工作</p></div></article>
+            <article class="stat-card"><span class="stat-icon green">✓</span><div><small>成功率</small><strong id="statRate">100%</strong><p id="statFailed">0 次失敗</p></div></article>
+            <article class="stat-card"><span class="stat-icon amber">ϟ</span><div><small>平均傳輸率</small><strong id="statMps">0.00</strong><p>messages / sec</p></div></article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel span-two">
+              <div class="panel-head"><div><span class="eyebrow">ACTIVITY</span><h3>即時傳輸</h3></div><button class="text-button" data-go="traffic">查看全部 →</button></div>
+              <div class="traffic-list compact" id="recentTraffic"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head"><div><span class="eyebrow">RUNS</span><h3>執行狀態</h3></div><span class="count-badge" id="activeBadge">0 ACTIVE</span></div>
+              <div id="dashboardRuns" class="run-stack"></div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 裝置卡片由本機 localStorage 設定產生，按發送才呼叫後端 API。 -->
+        <section class="view" data-page="devices" hidden>
+          <div class="section-toolbar">
+            <div><span class="eyebrow">DEVICE FLEET</span><h2>虛擬裝置</h2><p>每個設定可代表一台或一組同型裝置。</p></div>
+            <div class="toolbar-actions"><label class="search"><span>⌕</span><input id="deviceSearch" placeholder="搜尋裝置或協議"></label><button class="button button-primary" data-action="add-device">＋ 新增裝置</button></div>
+          </div>
+          <div class="device-grid" id="deviceGrid"></div>
+        </section>
+
+        <!-- 模擬器分成目標與感測資料編輯區、Payload 預覽區。 -->
+        <section class="view" data-page="simulator" hidden>
+          <div class="section-toolbar">
+            <div><span class="eyebrow">IOT DEVICE SIMULATOR</span><h2>感測資料模擬器</h2><p>設定 Sensor Data、Payload Format 與協議，送出真正的網路封包。</p></div>
+            <span class="capture-state"><i></i><span><strong>PACKET CAPTURE</strong><small id="captureStatus">等待後端</small></span></span>
+          </div>
+          <div class="sim-template-grid" id="simTemplateGrid"></div>
+          <div class="sim-layout">
+            <div class="sim-editor-stack">
+              <!-- 此區決定後端要呼叫哪個協議 Adapter，以及它的目標位址。 -->
+              <article class="panel sim-panel">
+                <div class="panel-head"><div><span class="eyebrow">DEVICE &amp; PROTOCOL</span><h3>裝置與傳輸協議</h3></div></div>
+                <div class="form-grid sim-three">
+                  <label class="field"><span>Device ID</span><input id="simDeviceName" value="ENV-SENSOR-001"></label>
+                  <label class="field"><span>Protocol</span><select id="simProtocol"></select></label>
+                  <label class="field"><span>Auto Send Interval</span><select id="simInterval"><option value="1000">每 1 秒</option><option value="5000">每 5 秒</option><option value="10000">每 10 秒</option></select></label>
+                </div>
+                <div class="divider-title"><span>連線目標</span><small id="simProtocolHint"></small></div>
+                <div class="form-grid" id="simTargetFields"></div>
+              </article>
+              <!-- graphical 模式使用欄位表格；raw_json 模式直接送自訂 JSON。 -->
+              <article class="panel sim-panel">
+                <div class="panel-head"><div><span class="eyebrow">APPLICATION PAYLOAD</span><h3>Sensor Data</h3></div><button class="button button-secondary button-small" id="simAddCustom">＋ Custom Field</button></div>
+                <div class="sim-mode-row">
+                  <div class="segmented" id="simPayloadMode"><button data-mode="graphical" class="active">圖形化設定</button><button data-mode="raw_json">原始 JSON</button></div>
+                  <div class="segmented" id="simPayloadFormat"><button data-format="json" class="active">JSON</button><button data-format="plain_text">Plain Text</button><button data-format="binary">Binary</button></div>
+                </div>
+                <div id="simGraphicalEditor" class="sensor-table-wrap"><table class="sensor-table"><thead><tr><th>名稱</th><th>數值</th><th>單位</th><th>資料型態</th><th>產生模式</th><th>範圍 / Step</th><th></th></tr></thead><tbody id="simSensorRows"></tbody></table></div>
+                <label class="field" id="simRawEditor" hidden><span>自訂 JSON Payload</span><textarea id="simRawJson" rows="12" class="code-input">{
+  "device_id": "CUSTOM-001",
+  "temperature": 26.5,
+  "humidity": 63
+}</textarea><small class="field-error" id="simRawError"></small></label>
+              </article>
+            </div>
+            <!-- 預覽內容由 /api/preview 生成；Send Once 傳 preview_id 供後端重用。 -->
+            <aside class="panel sim-preview">
+              <div class="panel-head"><div><span class="eyebrow">PAYLOAD PREVIEW</span><h3>送出前實際內容</h3></div><button class="icon-button" id="simRefreshPreview">↻</button></div>
+              <div class="preview-meta"><span id="simPreviewFormat">JSON</span><span id="simPreviewType">application/json</span><strong id="simPreviewBytes">0 BYTES</strong></div>
+              <pre id="simPayloadPreview" class="code-block">正在產生預覽…</pre>
+              <p class="preview-note">Send Once 會送出這一份 Payload；Random 與 Range 會在下一次產生新值。</p>
+              <div class="sim-actions"><button class="button button-primary" id="simSendOnce">Send Once</button><button class="button button-secondary" id="simAutoSend">▶ Start Auto Send</button></div>
+              <div class="sim-result" id="simLastSend">尚未送出封包</div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- Run 是後端定時發送工作；此頁負責顯示、啟動與停止。 -->
+        <section class="view" data-page="runs" hidden>
+          <div class="section-toolbar"><div><span class="eyebrow">SIMULATION RUNS</span><h2>模擬執行</h2><p>從已儲存的裝置啟動或停止持續發送。</p></div></div>
+          <article class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>RUN ID</th><th>裝置</th><th>協議</th><th>裝置數</th><th>間隔</th><th>開始時間</th><th>狀態</th><th></th></tr></thead><tbody id="runsTable"></tbody></table></div></article>
+          <div class="empty-callout" id="runLauncher"></div>
+        </section>
+
+        <!-- 事件列表是後端發送結果，不等同接收端已保存的紀錄。 -->
+        <section class="view" data-page="traffic" hidden>
+          <div class="section-toolbar">
+            <div><span class="eyebrow">LIVE TRAFFIC</span><h2>即時流量</h2><p>後端回報的真實傳輸結果與錯誤。</p></div>
+            <div class="toolbar-actions"><select id="trafficProtocol" class="control compact-control"><option value="">所有協議</option></select><select id="trafficResult" class="control compact-control"><option value="">所有結果</option><option value="success">成功</option><option value="failed">失敗</option><option value="system">Run 事件</option></select></div>
+          </div>
+          <article class="panel no-pad"><div class="traffic-head"><span>時間</span><span>結果</span><span>協議</span><span>裝置 / Run</span><span>回應</span></div><div class="traffic-list" id="trafficList"></div></article>
+        </section>
+
+        <!-- 封包檢視器讀取容器 eth0 的 TCP/UDP 擷取摘要，PCAP 可供外部分析。 -->
+        <section class="view" data-page="packets" hidden>
+          <div class="section-toolbar">
+            <div><span class="eyebrow">REAL PACKET CAPTURE</span><h2>封包檢視器</h2><p>顯示 Sender 容器 eth0 實際產生的 TCP 與 UDP 封包。</p></div>
+            <div class="toolbar-actions"><a class="button button-secondary download-link" href="/api/packets.pcap" download>下載 PCAP</a><button class="button button-danger-outline" id="clearPackets">清除封包</button></div>
+          </div>
+          <div class="packet-stats"><article><small>CAPTURED</small><strong id="packetCount">0</strong><p>packets in memory</p></article><article><small>INTERFACE</small><strong id="packetInterface">eth0</strong><p>sender container</p></article><article><small>TRANSMISSION</small><strong id="packetTransmission">—</strong><p>correlation id</p></article></div>
+          <article class="panel no-pad packet-panel">
+            <div class="packet-toolbar"><div><select id="packetProtocol" class="control compact-control"><option value="">所有協議</option></select><select id="packetDirection" class="control compact-control"><option value="">所有方向</option><option value="OUT">OUT</option><option value="IN">IN</option></select></div><button class="text-button" id="showAllPackets">顯示全部傳輸</button></div>
+            <div class="packet-layout"><div class="table-wrap"><table><thead><tr><th>#</th><th>時間</th><th>方向</th><th>協議</th><th>來源</th><th>目的</th><th>長度</th></tr></thead><tbody id="packetRows"></tbody></table></div><aside class="packet-detail" id="packetDetail"><div class="empty-state"><div><span>▤</span><strong>選擇一筆封包</strong><p>查看 Raw Packet 與 Application Payload。</p></div></div></aside></div>
+          </article>
+        </section>
+
+        <!-- 協議卡片由前端 PROTOCOLS 表建立；各協議實際發送由 Python Adapter 實作。 -->
+        <section class="view" data-page="protocols" hidden>
+          <div class="section-toolbar"><div><span class="eyebrow">ADAPTERS</span><h2>協議設定</h2><p>七種 adapter 均由相同 Simulation Engine 調度。</p></div></div>
+          <div class="protocol-grid" id="protocolGrid"></div>
+        </section>
+
+        <!-- Payload 範本供裝置管理卡片引用，保存在目前瀏覽器。 -->
+        <section class="view" data-page="payloads" hidden>
+          <div class="section-toolbar"><div><span class="eyebrow">DATA DESIGN</span><h2>Payload 範本</h2><p>用動態變數建立可重用的感測資料。</p></div><button class="button button-primary" data-action="add-payload">＋ 新增範本</button></div>
+          <div class="payload-layout"><div class="template-list" id="templateList"></div><article class="panel payload-editor" id="payloadEditor"></article></div>
+        </section>
+
+        <!-- 設定頁只調整前端顯示與本機資料，不更動後端協議行為。 -->
+        <section class="view" data-page="settings" hidden>
+          <div class="section-toolbar"><div><span class="eyebrow">PREFERENCES</span><h2>系統設定</h2><p>這些偏好只儲存在目前瀏覽器。</p></div></div>
+          <article class="panel settings-panel">
+            <div class="setting-row"><div><strong>狀態更新頻率</strong><p>控制 Dashboard 向 API 取得最新狀態的間隔。</p></div><select id="pollInterval" class="control"><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option></select></div>
+            <div class="setting-row"><div><strong>流量顯示筆數</strong><p>限制瀏覽器畫面呈現的事件數量。</p></div><select id="eventLimit" class="control"><option value="25">25</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
+            <div class="setting-row"><div><strong>本機工作區資料</strong><p>裝置與 Payload 範本保存在 localStorage；請勿儲存正式環境密碼。</p></div><button class="button button-danger-outline" data-action="reset-local">重設本機資料</button></div>
+          </article>
+          <article class="panel about-panel"><span class="brand-mark small"><i></i><i></i><i></i></span><div><strong>NEXUS IoT Simulator <span>v0.2 UI</span></strong><p>FastAPI · Python 3.12 · Docker · ARM64 ready</p></div></article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 裝置表單的協議專用 target 欄位由 app.js 動態插入。 -->
+  <dialog id="deviceDialog" class="dialog">
+    <form id="deviceForm" method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">DEVICE CONFIGURATION</span><h2 id="dialogTitle">新增虛擬裝置</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="關閉">×</button></div>
+      <div class="form-grid">
+        <label class="field span-2"><span>裝置名稱</span><input name="name" required maxlength="64" placeholder="例如：TEMP-SENSOR"></label>
+        <label class="field"><span>通訊協議</span><select name="protocol" id="deviceProtocol" required></select></label>
+        <label class="field"><span>虛擬裝置數量</span><input name="count" type="number" min="1" max="10000" value="1" required></label>
+        <label class="field"><span>發送間隔（ms）</span><input name="interval_ms" type="number" min="1000" value="1000" required></label>
+        <label class="field"><span>Payload 範本</span><select name="template_id" id="deviceTemplate"></select></label>
+      </div>
+      <div class="divider-title"><span>連線目標</span><small id="protocolHint"></small></div>
+      <div class="form-grid" id="targetFields"></div>
+      <details class="advanced"><summary>進階 JSON 預覽</summary><pre id="targetPreview"></pre></details>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-action="close-dialog">取消</button><button type="submit" class="button button-primary">儲存裝置</button></div>
+    </form>
+  </dialog>
+
+  <!-- 範本編輯器檢查 JSON 最外層為物件後才存進 localStorage。 -->
+  <dialog id="payloadDialog" class="dialog small-dialog">
+    <form id="payloadForm" method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">PAYLOAD TEMPLATE</span><h2 id="payloadDialogTitle">新增範本</h2></div><button type="button" class="icon-button" data-action="close-payload-dialog">×</button></div>
+      <label class="field"><span>範本名稱</span><input name="name" required maxlength="64"></label>
+      <label class="field"><span>JSON Payload</span><textarea name="payload" rows="12" class="code-input" required></textarea></label>
+      <p class="field-error" id="payloadError"></p>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-action="close-payload-dialog">取消</button><button type="submit" class="button button-primary">儲存範本</button></div>
+    </form>
+  </dialog>
+
+  <!-- 即時通知區；defer 讓腳本在 HTML 解析後執行，內部再等待 DOMContentLoaded。 -->
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/static/app.js?v=20261001-old-ui-1" defer></script>
+</body>
+</html>

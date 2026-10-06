@@ -1,0 +1,6 @@
+# 這些檔案屬於本機快取或版本資料，不需要複製進 Docker build context。
+__pycache__
+*.pyc
+.venv
+.git
+.DS_Store

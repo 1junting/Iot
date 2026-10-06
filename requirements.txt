@@ -1,0 +1,14 @@
+# Web API 伺服器與輸入資料模型。
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pydantic==2.11.4
+# MQTT、CoAP 與 AMQP 協議實作。
+paho-mqtt==2.1.0
+aiocoap==0.4.17
+aio-pika==9.5.5
+# 非同步 HTTP 與 WebSocket client。
+httpx==0.28.1
+websockets==15.0.1
+# Modbus TCP 發送與容器網卡封包擷取。
+pymodbus==3.11.3
+scapy==2.6.1
