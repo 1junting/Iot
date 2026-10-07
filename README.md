@@ -19,7 +19,7 @@
 ## 啟動
 
 ```bash
-cd /Users/junting/Desktop/專題/發送端/iot-all-in-one-sender
+cd /Users/Desktop/專題/發送端/iot-all-in-one-sender
 docker compose up --build -d
 docker compose ps
 ```
