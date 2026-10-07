@@ -40,6 +40,9 @@ class DeviceConfig(BaseModel):
     """
 
     name: str = Field(default="ENV-SENSOR-001", min_length=1, max_length=64)
+    # 未提供 count 的舊 API 保持單裝置行為；明確提供時，name 作為群組前綴。
+    count: int | None = Field(default=None, ge=1, le=10000)
+    template_mode: bool = False
     protocol: Protocol = "mqtt"
     interval_ms: int = Field(default=1000, ge=1000, le=3_600_000)
     target: Dict[str, Any] = Field(default_factory=dict)

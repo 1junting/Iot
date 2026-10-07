@@ -59,6 +59,17 @@ docker compose down
 
 ## Payload Format
 
+裝置管理的 `count` 代表 Logical Devices。群組 `TEMP-LAB`、count=10 會逐台
+發送 `TEMP-LAB-001` 至 `TEMP-LAB-010`，共用設定的目標與 Host，不需 10 個 IP。
+「發送一次」送每台一筆；連續 Run 每輪送完所有身分再進入下一輪，停止 Run
+會停止整組。範本中的 `{{device_id}}`、`{{timestamp}}` 與隨機值在後端每次傳輸時
+展開，避免重複發送首次產生的固定 Payload。
+
+API 的 `DeviceConfig` 新增選填 `count` 與 `template_mode`。未提供 count 時保留
+原本單裝置 API／原始 JSON 行為；明確提供 count 時，name 作為群組前綴。
+群組的單次結果含 `sent`、`failed` 及逐台 `events`，統計與 Packet Viewer 也逐台記錄。
+Simulator 不提供裝置探索清單，HDPCM 應由真正的協議流量建立裝置身分。
+
 JSON 使用帶有 `device_id`、`timestamp` 與 `sensors` 的結構。Plain Text 使用分號分隔的 `key=value unit`。Binary 是供封包大小與結構比較的固定實驗格式：
 
 ```text

@@ -69,6 +69,21 @@ class Simulator:
 
     async def send_once(self, config: DeviceConfig, preview_id: str | None = None, run_id: str | None = None):
         """完整的一次發送：準備資料、呼叫 Adapter、標記封包並記錄結果。"""
+        if config.count is not None:
+            # 每個 Logical Device 都呼叫真實 Adapter；群組共用主機和目標設定。
+            events = []
+            for index in range(1, config.count + 1):
+                identity = f"{config.name}-{index:03d}"
+                child = config.model_copy(deep=True, update={"name": identity, "count": None})
+                if child.payload_mode == "raw_json" and not child.template_mode:
+                    child.raw_json["device_id"] = identity
+                events.append(await self.send_once(child, run_id=run_id))
+            failed = sum(not event["ok"] for event in events)
+            return {"ok": failed == 0, "protocol": config.protocol, "device": config.name,
+                    "count": config.count, "sent": len(events) - failed, "failed": failed,
+                    "events": events, "error": f"{failed} 個裝置發送失敗" if failed else None,
+                    "payload_bytes": sum(event["payload_bytes"] for event in events),
+                    "packet_count": sum(event["packet_count"] for event in events)}
         payload = self._prepared(config, preview_id)
         transmission_id = str(uuid.uuid4())[:12]
         async with self._send_lock:
@@ -130,6 +145,7 @@ class Simulator:
         self.runs[run_id] = {
             "run_id": run_id,
             "name": config.name,
+            "count": config.count or 1,
             "protocol": config.protocol,
             "interval_ms": config.interval_ms,
             "payload_format": config.payload_format if config.payload_mode == "graphical" else "json",

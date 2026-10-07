@@ -3,6 +3,7 @@
 import json
 import math
 import random
+import re
 import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -99,14 +100,37 @@ def _binary_payload(device_id: str, timestamp_ms: int, fields: list[SensorField]
     return bytes(result)
 
 
+def _template(value: Any, identity: str, timestamp: str) -> Any:
+    """每次發送才展開範本；不同裝置和不同週期均產生自己的資料。"""
+    if isinstance(value, dict):
+        return {key: _template(item, identity, timestamp) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_template(item, identity, timestamp) for item in value]
+    if not isinstance(value, str):
+        return value
+    if value == "{{device_id}}":
+        return identity
+    if value == "{{timestamp}}":
+        return timestamp
+    match = re.fullmatch(r"\{\{(random|int):([-\d.]+):([-\d.]+)\}\}", value)
+    if match:
+        low, high = float(match[2]), float(match[3])
+        return random.randint(int(low), int(high)) if match[1] == "int" else round(random.uniform(low, high), 4)
+    return value
+
+
 def build_payload(config: DeviceConfig, sequence: int = 0) -> BuiltPayload:
     """由設定產生 body、Content-Type、預覽文字與欄位原值。
 
     raw_json 先返回，因此畫面選原始 JSON 時不會再走文字或 Binary 分支。
     """
     if config.payload_mode == "raw_json":
-        body = json.dumps(config.raw_json, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        return BuiltPayload(body, "application/json", json.dumps(config.raw_json, ensure_ascii=False, indent=2), config.raw_json, "json")
+        data = config.raw_json
+        if config.template_mode:
+            data = _template(data, config.name, datetime.now(timezone.utc).isoformat())
+            data["device_id"] = config.name
+        body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return BuiltPayload(body, "application/json", json.dumps(data, ensure_ascii=False, indent=2), data, "json")
 
     fields = config.sensor_fields
     # 同一輪先算好每個欄位；後續 JSON／文字／Binary 都使用相同數值。

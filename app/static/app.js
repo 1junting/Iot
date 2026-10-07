@@ -361,11 +361,11 @@ function materializeTemplate(value, deviceId) {
 function buildDevicePayload(device) {
   const template = templateById(device.template_id);
   if (!template) throw new Error('找不到指定的 Payload 範本');
-  // 此處的時間與隨機值只計算一次；背景 Run 之後會重送這份 raw_json。
+  // 後端在每次傳輸時展開裝置身分、時間與隨機值，群組內每台都會實際發送。
   return {
-    name: device.name, protocol: device.protocol, interval_ms: Math.max(1000, Number(device.interval_ms)), target: device.target,
+    name: device.name, count: Number(device.count), template_mode: true, protocol: device.protocol, interval_ms: Math.max(1000, Number(device.interval_ms)), target: device.target,
     payload_mode: 'raw_json', payload_format: 'json', sensor_fields: [],
-    raw_json: materializeTemplate(template.payload, `${device.name}-001`)
+    raw_json: template.payload
   };
 }
 
@@ -398,7 +398,7 @@ async function sendDevice(id) {
   try {
     const payload = buildDevicePayload(device);
     const result = await api('/api/send-once', { method: 'POST', body: JSON.stringify({ config: payload }) });
-    if (result.ok) toast('發送成功', `${device.name} · ${PROTOCOLS[device.protocol].label}`, 'success');
+    if (result.ok) toast('發送成功', `${device.name} · ${result.sent || 1} 個裝置已送出`, 'success');
     else toast('目標端回報失敗', result.error, 'error');
     await refreshStatus();
   } catch (error) { toast('發送失敗', error.message, 'error'); }
